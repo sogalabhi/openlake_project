@@ -8,6 +8,8 @@ from airflow.operators.python import PythonOperator
 
 from botocore.exceptions import ClientError
 
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+
 def validate_source_file():
     csv_path = "/opt/airflow/data/online_retail_II.csv"
     if not os.path.exists(csv_path):
@@ -52,4 +54,14 @@ with DAG(
         python_callable=upload_to_bronze,
     )
 
-    task_1 >> task_2
+    task_3 = SparkSubmitOperator(
+        task_id="transform_bronze_to_silver",
+        conn_id="spark_default",
+        application="/opt/airflow/scripts/transform_bronze_to_silver.py",
+        application_args=["{{ ds }}"], 
+        packages="io.delta:delta-spark_2.12:3.1.0,org.apache.hadoop:hadoop-aws:3.3.4",
+        name="airflow-bronze-to-silver",
+        verbose=True
+    )
+
+    task_1 >> task_2 >> task_3
