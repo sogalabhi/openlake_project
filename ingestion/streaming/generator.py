@@ -9,7 +9,7 @@ if __name__ == "__main__":
         value_serializer=lambda x: json.dumps(x).encode('utf-8')
     )
 
-    csv_path = "../../data/online_retail_II.csv"
+    csv_path = "data/online_retail_II.csv"
 
     df = pd.read_csv(csv_path)
 
