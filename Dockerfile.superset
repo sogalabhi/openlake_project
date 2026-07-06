@@ -1,0 +1,7 @@
+FROM apache/superset:latest
+
+USER root
+RUN apt-get update -qq && apt-get install -y gcc g++ libsasl2-dev libsasl2-modules build-essential
+
+USER superset
+RUN . /app/.venv/bin/activate && pip install --no-cache-dir pyhive pure-sasl thrift thrift-sasl

@@ -128,7 +128,17 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
-    
+  superset:
+    build: 
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: superset
+    environment:
+      - SUPERSET_SECRET_KEY="super_secret_crypto_key_for_superset_ui"
+    ports:
+      - "8088:8088"
+    networks:
+      - default
 
 volumes:
   minio-data:
