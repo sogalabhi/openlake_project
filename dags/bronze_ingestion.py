@@ -61,6 +61,9 @@ with DAG(
         application_args=["{{ ds }}"], 
         packages="io.delta:delta-spark_2.12:3.1.0,org.apache.hadoop:hadoop-aws:3.3.4",
         name="airflow-bronze-to-silver",
+        conf={
+            "spark.master": "spark://spark-master:7077"
+        },
         verbose=True
     )
 

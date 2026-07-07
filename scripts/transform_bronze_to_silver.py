@@ -27,7 +27,8 @@ def main(execution_date):
         StructField("InvoiceDate", StringType(), True),
         StructField("Price", DoubleType(), True),
         StructField("Customer ID", StringType(), True),
-        StructField("Country", StringType(), True)
+        StructField("Country", StringType(), True),
+        StructField("revenue", DoubleType(), True) 
     ])
 
     bronze_path = f"s3a://lakehouse/bronze/{execution_date}/online_retail_II.csv"
@@ -45,6 +46,7 @@ def main(execution_date):
         .withColumn("quantity", col("Quantity").cast(IntegerType())) \
         .withColumn("price", col("Price").cast(DoubleType())) \
         .withColumn("ingested_at", current_timestamp()) \
+        .withColumn("revenue", col("Quantity").cast(DoubleType()) * col("Price").cast(DoubleType())) \
         .select(
             col("Invoice").alias("invoice_id"),
             col("product_id"),
@@ -54,7 +56,8 @@ def main(execution_date):
             col("price"),
             col("customer_id"),
             col("Country").alias("country"),
-            col("ingested_at")
+            col("ingested_at"),
+            col("revenue")
         )
 
     silver_path = "s3a://lakehouse/silver/retail_transactions"
@@ -64,6 +67,7 @@ def main(execution_date):
     df_cleaned.write \
         .format("delta") \
         .mode("append") \
+        .option("mergeSchema", "true") \
         .save(silver_path)
 
     print("Silver processing layer complete!")
