@@ -140,6 +140,21 @@ services:
     networks:
       - default
 
+  ml-serving:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    container_name: ml-serving
+    environment:
+      - MODEL_PATH=/app/scripts/model.pkl
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./scripts:/app/scripts
+      - ./ml:/app/ml
+    networks:
+      - default
+
 volumes:
   minio-data:
   postgres-data:
