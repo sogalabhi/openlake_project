@@ -67,4 +67,28 @@ with DAG(
         verbose=True
     )
 
-    task_1 >> task_2 >> task_3
+    task_4 = SparkSubmitOperator(
+        task_id="train_churn_model",
+        conn_id="spark_default",
+        application="/opt/airflow/scripts/train_churn_model.py",
+        packages="io.delta:delta-spark_2.12:3.1.0,org.apache.hadoop:hadoop-aws:3.3.4",
+        name="airflow-train-churn-model",
+        conf={
+            "spark.master": "spark://spark-master:7077"
+        },
+        verbose=True
+    )
+
+    task_5 = SparkSubmitOperator(
+        task_id="push_churn_scores",
+        conn_id="spark_default",
+        application="/opt/airflow/reverse_etl/push_churn_scores.py",
+        packages="io.delta:delta-spark_2.12:3.1.0,org.apache.hadoop:hadoop-aws:3.3.4",
+        name="airflow-push-churn-scores",
+        conf={
+            "spark.master": "spark://spark-master:7077"
+        },
+        verbose=True
+    )
+
+    task_1 >> task_2 >> task_3 >> task_4 >> task_5

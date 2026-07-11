@@ -12,6 +12,7 @@ x-airflow-common: &airflow-common
     - ./dags:/opt/airflow/dags
     - ./data:/opt/airflow/data
     - ./scripts:/opt/airflow/scripts
+    - ./reverse_etl:/opt/airflow/reverse_etl
   depends_on:
     postgres:
       condition: service_healthy
