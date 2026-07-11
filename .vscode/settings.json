@@ -1,0 +1,22 @@
+{
+    "sqltools.connections": [
+        {
+            "connectionTimeout": 15,
+            "mssqlOptions": {
+                "appName": "SQLTools",
+                "useUTC": true,
+                "encrypt": true,
+                "trustServerCertificate": true
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "sql-openlake-abhijith.database.windows.net",
+            "port": 1433,
+            "driver": "MSSQL",
+            "name": "Microsoft SQL Server",
+            "password": "SuperSecretPassword123!",
+            "database": "crm",
+            "username": "sqladmin"
+        }
+    ]
+}
