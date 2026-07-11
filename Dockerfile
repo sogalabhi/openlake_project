@@ -14,4 +14,4 @@ ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 USER airflow
 
-RUN pip install --no-cache-dir apache-airflow==2.9.0 apache-airflow-providers-apache-spark pyspark==3.5.0
+RUN pip install --no-cache-dir apache-airflow==2.9.0 apache-airflow-providers-apache-spark pyspark==3.5.0 scikit-learn "numpy<2"

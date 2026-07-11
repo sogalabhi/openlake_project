@@ -1,0 +1,6 @@
+.git
+data/
+postgres-data/
+minio-data/
+redpanda-data/
+.env
