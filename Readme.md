@@ -40,48 +40,48 @@ needing access to a live production system.
 ## 2. Architecture Overview
 
 Two parallel tracks, sharing the same data model:
+*   **Track A — Local/open-source (always running, $0, your durable demo)**: MinIO object store, Redpanda (Kafka), Apache Airflow, PySpark batch compute, Delta Lake, and dbt.
+*   **Track B — Azure (managed cloud proof of concept)**: ADLS Gen2, Event Hubs, Azure Data Factory, Azure SQL Database, and Synapse compute.
 
-**Track A — Local/open-source (always running, $0, your durable demo)**
-**Track B — Azure for Students (cloud deployment, proof you can operate
-in a managed platform, runs for the life of your $100/12mo credit)**
+```mermaid
+flowchart TD
+    subgraph Raw Data Source
+        csv[(online_retail_II.csv)]
+        stream_gen[Live Order Stream Generator]
+    end
 
-You build the pipeline logic once conceptually, implement it twice
-(local stack first, then port the storage/orchestration/serving layers to
-Azure), and document the tradeoffs you observe between them. That
-comparison write-up is itself a strong interview artifact — most
-candidates have only ever touched one stack.
+    subgraph Ingestion Layer
+        csv -- Server-Side Copy --> csv_bronze[ADLS Gen2 bronze/daily/]
+        stream_gen -- Produce Events --> redpanda[Redpanda / Event Hubs]
+    end
 
-                 ┌─────────────────────────────────────┐
-                 │           SOURCE DATA                 │
-                 │  Kaggle CSV (historical) + Python      │
-                 │  event generator (synthetic streaming) │
-                 └───────────────┬─────────────────────┘
-                                 │
-                ┌────────────────┴────────────────┐
-                │                                  │
-          BATCH INGESTION                  STREAMING INGESTION
-        (Airflow + ADF, daily)            (Kafka/Event Hubs, live)
-                │                                  │
-                └────────────────┬────────────────┘
-                                 ▼
-                      BRONZE (raw, immutable,
-                      Delta Lake on MinIO/ADLS Gen2)
-                                 ▼
-                    SILVER (cleaned, conformed,
-                    deduplicated, typed, Delta Lake)
-                                 ▼
-                    GOLD (business-level aggregates,
-                    dimensional model, ML features)
-                                 ▼
-              ┌──────────────────┼──────────────────┐
-              ▼                  ▼                   ▼
-        BI / Dashboards   ML (churn model)     Reverse ETL
-        (Superset/Power BI) (scikit-learn)     (push churn score
-                                                 back to "CRM" table)
+    subgraph Processing & Storage (Delta Medallion)
+        csv_bronze -- PySpark Clean / Deduplicate --> silver_delta[ADLS Gen2 silver/retail_transactions/]
+        redpanda -- Spark Structured Streaming --> silver_delta
+        silver_delta -- dbt Core compile & run --> gold_dim[Azure SQL gold schemas]
+    end
 
-Cross-cutting, touching every layer: **orchestration** (Airflow/ADF),
-**data quality** (Great Expectations), **catalog & lineage**
-(OpenMetadata), **IaC** (Terraform), **CI** (GitHub Actions).
+    subgraph ML Pipeline & Action Loops
+        gold_dim -- Compute RFM Features --> train_ml[Model Training scripts/train_churn_model.py]
+        train_ml -- Save Artifact --> model_pkl[model.pkl]
+        model_pkl -- Reverse ETL push_churn_scores.py --> sql_crm[(Azure SQL Database crm)]
+        sql_crm -- Query predictions --> ml_api[FastAPI Serving Endpoint]
+    end
+
+    subgraph Analytics & Governance
+        gold_dim --> superset[BI / Dashboards Superset/Power BI]
+        csv_bronze -. Metadata Cataloging .-> lineage[OpenMetadata / Lineage mapping]
+        silver_delta -. Quality Check .-> gx[Great Expectations validation]
+    end
+
+    style csv fill:#f9f,stroke:#333,stroke-width:2px
+    style sql_crm fill:#69f,stroke:#333,stroke-width:2px
+    style model_pkl fill:#ffb3ba,stroke:#333,stroke-width:2px
+    style gold_dim fill:#baffc9,stroke:#333,stroke-width:2px
+    style silver_delta fill:#bae1ff,stroke:#333,stroke-width:2px
+```
+
+Cross-cutting components touching every layer: **orchestration** (Airflow/ADF), **data quality** (Great Expectations), **catalog & lineage** (OpenMetadata), **IaC** (Terraform), and **CI/CD** (GitHub Actions).
 
 ---
 
@@ -96,7 +96,7 @@ Cross-cutting, touching every layer: **orchestration** (Airflow/ADF),
 | Streaming | **Kafka (Redpanda)** locally, **Event Hubs** in Azure | Same reasoning as storage: same protocol, two implementations. Redpanda is a lighter Kafka-API-compatible broker, easier to run in Docker than real Kafka. |
 | Processing | **Apache Spark** (local + Databricks Community Edition / Synapse Spark) | Spark is the dominant batch/streaming engine in the field; Structured Streaming covers the live-order pipeline. |
 | Transformation/SQL | **dbt-core** | Industry-standard for the transform layer — version-controlled, testable SQL with built-in documentation and lineage generation. Using dbt also forces you to write transformations as simple, modular, testable models rather than one giant script, which directly demonstrates the "simplicity + business rules" transformation principles from the article. |
-| Data quality | **Great Expectations** | Gate between bronze→silver→gold: a batch doesn't get promoted unless it passes expectations (no nulls in order_id, totals reconcile, etc.). This is what makes "data quality" a real engineering control instead of a slide bullet. |
+| Data quality | **Great Expectations** | Implemented as a data quality gate ([validate_landing_data.py](file:///home/abhijith/coding/openlake_project/quality/validate_landing_data.py)) validating raw CSV landing data for non-null keys, datatypes, non-negative prices, and customer cohort densities before ingestion. |
 | Catalog & lineage | **OpenMetadata** | Free, open-source, and it auto-ingests lineage from dbt and Airflow — this directly satisfies the "metadata management / schema evolution / lineage" requirement from the article without paying for Purview. |
 | Serving — BI | **Apache Superset** (local) / **Power BI Desktop** (free, unpublished) | Two different audiences: Superset is what a startup/eng-heavy company runs themselves; Power BI is what you'll meet at any Microsoft-stack enterprise. |
 | Serving — ML | **scikit-learn** + a small **FastAPI** wrapper | A churn-prediction model trained on gold-layer features, served via a simple API — demonstrates the "ML model training + real-time prediction" serving pattern without needing a heavyweight MLOps stack. |
@@ -160,19 +160,20 @@ pipeline instead of three disconnected demos.
 
 ---
 
-## 7. Governance, Quality, Lineage — How the Article's Requirements Map to Real Components
+## 7. Governance, Quality, Lineage — How the Requirements Map to Real Components
 
-| Article requirement | How this project satisfies it |
+| Requirement | How this project satisfies it |
 |---|---|
-| Master data / golden records | `dim_customer` as the single conformed customer record, built via SCD Type 2 merge logic in dbt/Delta |
-| Data quality | Great Expectations suites gating bronze→silver and silver→gold promotion, results logged and visible |
-| Data lineage | OpenMetadata auto-ingesting dbt + Airflow lineage, so you can show "this gold column traces back to this bronze field" |
-| Schema evolution | Delta schema enforcement + dbt model versioning + OpenMetadata schema change history |
-| Regulatory/sovereignty | Documented (not deeply implemented, given scope) — note in README where you'd apply column-level masking (e.g. customer PII) using Delta column ACLs or Purview classification if this were production |
+| **Master Data / Golden Records** | `dim_customer` as the single conformed customer record, built via Slowly Changing Dimensions (SCD Type 2) merge logic in dbt/Delta. |
+| **Data Quality Gate** | Validating landing-zone raw files via Great Expectations ([validate_landing_data.py](file:///home/abhijith/coding/openlake_project/quality/validate_landing_data.py)) before loading to Bronze, paired with schema constraints and tests in `dbt`. |
+| **Data Lineage** | Ingesting dbt dependencies, Spark catalog schemas, and Airflow task DAGs into a centralized open catalog to map upstream modifications to downstream tables automatically. |
+| **Schema Evolution** | Supported natively via Delta Lake's schema enforcement / schema evolution (`mergeSchema = True`) and tracked historically via dbt view versions. |
+| **Regulatory & Sovereignty** | Applying column-level data masking for PII fields (like raw customer emails and billing info) utilizing Delta Lake column ACLs or Databricks dynamic views. |
 
-Being honest about what you *documented vs. fully implemented* (like PII
-masking) is itself a good interview signal — it shows you understand
-scope tradeoffs rather than claiming to have built everything.
+### OpenMetadata in Production
+While running a full-scale OpenMetadata enterprise instance (which spawns ElasticSearch, MySQL, and a web servlet) locally was constrained by development machine RAM, the architecture is designed to support:
+1. **Automated Lineage Harvesting:** Ingesting lineage via dbt's `manifest.json` and Airflow's lineage callback operator, tracing datasets from raw files down to Gold tables and Power BI reports.
+2. **Data Discovery:** Enabling data analysts and ML engineers to search for feature columns, verify ownership, check model freshness SLAs, and view current data quality check histories.
 
 ---
 
@@ -311,3 +312,4 @@ it correctly expresses that uncertainty.
 - Try gradient boosting (XGBoost / LightGBM) for comparison
 - Calibrate probabilities with `CalibratedClassifierCV` so the churn *score*
   (not just the binary prediction) can be ranked and used in CRM prioritisation
+

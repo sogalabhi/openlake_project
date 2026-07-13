@@ -3,3 +3,14 @@ __pycache__
 .pyc
 
 data/
+docs/
+
+.terraform/
+*.tfstate
+*.tfstate.*
+
+venv/
+.pytest_cache/
+
+ml/*.pkl
+*.csv
