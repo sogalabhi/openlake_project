@@ -43,7 +43,10 @@ def main(execution_date):
         ]
     )
 
-    bronze_path = f"abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net/bronze/{execution_date}/online_retail_II.csv"
+    bronze_path = (
+        f"abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net"
+        f"/bronze/{execution_date}/online_retail_II.csv"
+    )
 
     df_raw = spark.read.option("header", "true").schema(raw_schema).csv(bronze_path)
 

@@ -88,7 +88,10 @@ def main():
 
     cursor = conn.cursor()
     cursor.execute("""
-        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[customer_churn_scores]') AND type in (N'U'))
+        IF NOT EXISTS (
+            SELECT * FROM sys.objects
+            WHERE object_id = OBJECT_ID(N'[customer_churn_scores]') AND type in (N'U')
+        )
         CREATE TABLE customer_churn_scores (
             customer_id VARCHAR(255) PRIMARY KEY,
             churn_probability FLOAT,
@@ -126,10 +129,13 @@ def main():
 
         sql = f"""
         MERGE customer_churn_scores AS target
-        USING (VALUES {placeholders}) AS source (customer_id, churn_probability, churn_label, recency_days, frequency, monetary, scored_at)
+        USING (VALUES {placeholders}) AS source (
+            customer_id, churn_probability, churn_label,
+            recency_days, frequency, monetary, scored_at
+        )
         ON target.customer_id = source.customer_id
         WHEN MATCHED THEN
-            UPDATE SET 
+            UPDATE SET
                 churn_probability = source.churn_probability,
                 churn_label = source.churn_label,
                 recency_days = source.recency_days,
@@ -138,7 +144,10 @@ def main():
                 scored_at = source.scored_at
         WHEN NOT MATCHED THEN
             INSERT (customer_id, churn_probability, churn_label, recency_days, frequency, monetary, scored_at)
-            VALUES (source.customer_id, source.churn_probability, source.churn_label, source.recency_days, source.frequency, source.monetary, source.scored_at);
+            VALUES (
+                source.customer_id, source.churn_probability, source.churn_label,
+                source.recency_days, source.frequency, source.monetary, source.scored_at
+            );
         """
 
         # Flatten parameters for the execute call

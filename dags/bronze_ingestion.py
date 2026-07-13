@@ -42,7 +42,6 @@ def progress_callback(current, total):
 
 
 def upload_to_bronze(**context):
-    ti = context["ti"]
     execution_date = context["ds"]
     bronze_key = f"bronze/{execution_date}/online_retail_II.csv"
 
