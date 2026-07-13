@@ -45,30 +45,30 @@ Two parallel tracks, sharing the same data model:
 
 ```mermaid
 flowchart TD
-    subgraph Raw Data Source
+    subgraph "Raw Data Source"
         csv[(online_retail_II.csv)]
         stream_gen[Live Order Stream Generator]
     end
 
-    subgraph Ingestion Layer
+    subgraph "Ingestion Layer"
         csv -- Server-Side Copy --> csv_bronze[ADLS Gen2 bronze/daily/]
         stream_gen -- Produce Events --> redpanda[Redpanda / Event Hubs]
     end
 
-    subgraph Processing & Storage (Delta Medallion)
+    subgraph "Processing & Storage (Delta Medallion)"
         csv_bronze -- PySpark Clean / Deduplicate --> silver_delta[ADLS Gen2 silver/retail_transactions/]
         redpanda -- Spark Structured Streaming --> silver_delta
         silver_delta -- dbt Core compile & run --> gold_dim[Azure SQL gold schemas]
     end
 
-    subgraph ML Pipeline & Action Loops
+    subgraph "ML Pipeline & Action Loops"
         gold_dim -- Compute RFM Features --> train_ml[Model Training scripts/train_churn_model.py]
         train_ml -- Save Artifact --> model_pkl[model.pkl]
         model_pkl -- Reverse ETL push_churn_scores.py --> sql_crm[(Azure SQL Database crm)]
         sql_crm -- Query predictions --> ml_api[FastAPI Serving Endpoint]
     end
 
-    subgraph Analytics & Governance
+    subgraph "Analytics & Governance"
         gold_dim --> superset[BI / Dashboards Superset/Power BI]
         csv_bronze -. Metadata Cataloging .-> lineage[OpenMetadata / Lineage mapping]
         silver_delta -. Quality Check .-> gx[Great Expectations validation]
