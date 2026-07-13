@@ -40,7 +40,6 @@ def progress_callback(current, total):
 def upload_to_bronze(**context):
     ti = context["ti"]
     execution_date = context["ds"]
-    csv_path = ti.xcom_pull(task_ids="validate_source_file")
     bronze_key = f"bronze/{execution_date}/online_retail_II.csv"
 
     account_url = "https://stopenlakeabhijith.blob.core.windows.net"
@@ -52,13 +51,13 @@ def upload_to_bronze(**context):
         credential=os.environ.get("AZURE_STORAGE_KEY"),
     )
 
-    source_url = f"https://stopenlakeabhijith.blob.core.windows.net/lakehouse/landing/online_retail_II.csv"
+    source_url = "https://stopenlakeabhijith.blob.core.windows.net/lakehouse/landing/online_retail_II.csv"
 
     print(f"Initiating server-side copy from {source_url} to {bronze_key}")
     blob_client.start_copy_from_url(source_url)
         
     properties = blob_client.get_blob_properties()
-    print(f"Server-side copy status: {properties.copy.status}") 
+    print(f"Server-side copy status: {properties.copy.status}")
 
 with DAG(
     dag_id="bronze_ingestion",
