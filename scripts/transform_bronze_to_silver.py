@@ -10,11 +10,7 @@ def main(execution_date):
         .appName("BronzeToSilver-Deduplication") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-        .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_ROOT_USER", "admin")) \
-        .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_ROOT_PASSWORD", "password")) \
-        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+        .config("fs.azure.account.key.stopenlakeabhijith.dfs.core.windows.net", os.environ.get("AZURE_STORAGE_KEY")) \
         .getOrCreate()
 
     print(f"Starting processing for execution date: {execution_date}")
@@ -31,7 +27,7 @@ def main(execution_date):
         StructField("revenue", DoubleType(), True) 
     ])
 
-    bronze_path = f"s3a://lakehouse/bronze/{execution_date}/online_retail_II.csv"
+    bronze_path = f"abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net/bronze/{execution_date}/online_retail_II.csv"
     
     df_raw = spark.read \
         .option("header", "true") \
@@ -60,7 +56,7 @@ def main(execution_date):
             col("revenue")
         )
 
-    silver_path = "s3a://lakehouse/silver/retail_transactions"
+    silver_path = "abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net/silver/retail_transactions"
     
     print(f"Writing conformed data to Silver Delta Table at: {silver_path}")
 

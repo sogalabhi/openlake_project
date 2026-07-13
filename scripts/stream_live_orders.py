@@ -13,11 +13,7 @@ spark = SparkSession.builder \
     .appName("LiveOrderStreaming") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-    .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_ROOT_USER")) \
-    .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_ROOT_PASSWORD")) \
-    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+    .config("fs.azure.account.key.stopenlakeabhijith.dfs.core.windows.net", os.environ.get("AZURE_STORAGE_KEY")) \
     .getOrCreate()
 
 schema = StructType([
@@ -57,8 +53,8 @@ aggregated = typed.groupBy() \
 query = aggregated.writeStream \
     .format("delta") \
     .outputMode("complete") \
-    .option("checkpointLocation", "s3a://lakehouse/checkpoints/live_order_metrics") \
+    .option("checkpointLocation", "abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net/checkpoints/live_order_metrics") \
     .trigger(processingTime="10 seconds") \
-    .start("s3a://lakehouse/gold/live_order_metrics")
+    .start("abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net/gold/live_order_metrics")
 
 query.awaitTermination()

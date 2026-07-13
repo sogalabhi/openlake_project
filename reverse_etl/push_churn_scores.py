@@ -1,8 +1,7 @@
 import os
 import pickle
 import pandas as pd
-import psycopg2
-from psycopg2.extras import execute_values
+import pymssql
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, max, countDistinct, sum, datediff, lit, when
 from datetime import datetime, timedelta
@@ -17,15 +16,11 @@ def main():
         .appName("PushChurnScores") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-        .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_ROOT_USER", "admin")) \
-        .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_ROOT_PASSWORD", "password")) \
-        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+        .config("fs.azure.account.key.stopenlakeabhijith.dfs.core.windows.net", os.environ.get("AZURE_STORAGE_KEY")) \
         .getOrCreate()
 
     
-    silver_path = "s3a://lakehouse/silver/retail_transactions"
+    silver_path = "abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net/silver/retail_transactions"
     df = spark.read.format("delta").load(silver_path)
     df_filtered = df.filter(col("customer_id").isNotNull())
 
@@ -74,52 +69,71 @@ def main():
     print(f"Scored {len(df_pandas)} customers")
     print(f"Predicted churners: {df_pandas['churn_label'].sum()}")
 
-    conn = psycopg2.connect(
-        host="postgres",
-        port=5432,
-        user="airflow",
-        password="airflow",
-        dbname="crm"
+    conn = pymssql.connect(
+        server=os.environ.get("AZURE_SQL_SERVER"),
+        user=os.environ.get("AZURE_SQL_USER"),
+        password=os.environ.get("AZURE_SQL_PASSWORD"),
+        database="crm"
     )
 
     cursor = conn.cursor()
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS customer_churn_scores (
+        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[customer_churn_scores]') AND type in (N'U'))
+        CREATE TABLE customer_churn_scores (
             customer_id VARCHAR(255) PRIMARY KEY,
-            churn_probability DOUBLE PRECISION,
-            churn_label INTEGER,
-            recency_days INTEGER,
-            frequency INTEGER,
-            monetary DOUBLE PRECISION,
-            scored_at TIMESTAMP
+            churn_probability FLOAT,
+            churn_label INT,
+            recency_days INT,
+            frequency INT,
+            monetary FLOAT,
+            scored_at DATETIME
         );
     """)
     conn.commit()
 
-    # Build the UPSERT SQL statement
-    sql = """
-    INSERT INTO customer_churn_scores 
-        (customer_id, churn_probability, churn_label, recency_days, frequency, monetary, scored_at)
-    VALUES %s
-    ON CONFLICT (customer_id) 
-    DO UPDATE SET
-        churn_probability = EXCLUDED.churn_probability,
-        churn_label = EXCLUDED.churn_label,
-        recency_days = EXCLUDED.recency_days,
-        frequency = EXCLUDED.frequency,
-        monetary = EXCLUDED.monetary,
-        scored_at = EXCLUDED.scored_at;
-    """
-
+    # Build and execute the MERGE statement in batches of 100
+    batch_size = 100
     records = [
         (row.customer_id, float(row.churn_probability), int(row.churn_label), 
          int(row.recency_days), int(row.frequency), float(row.monetary), row.scored_at)
         for row in df_pandas.itertuples()
     ]
 
-    execute_values(cursor, sql, records)
-    conn.commit()
-    print(f"Upserted {len(records)} records to customer_churn_scores")
+    print(f"Starting batched upsert of {len(records)} records...")
+    
+    for i in range(0, len(records), batch_size):
+        batch = records[i:i+batch_size]
+        
+        # Create placeholders: (%s, %s, %s, %s, %s, %s, %s), (%s, %s, %s, %s, %s, %s, %s), ...
+        placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s, %s)"] * len(batch))
+        
+        sql = f"""
+        MERGE customer_churn_scores AS target
+        USING (VALUES {placeholders}) AS source (customer_id, churn_probability, churn_label, recency_days, frequency, monetary, scored_at)
+        ON target.customer_id = source.customer_id
+        WHEN MATCHED THEN
+            UPDATE SET 
+                churn_probability = source.churn_probability,
+                churn_label = source.churn_label,
+                recency_days = source.recency_days,
+                frequency = source.frequency,
+                monetary = source.monetary,
+                scored_at = source.scored_at
+        WHEN NOT MATCHED THEN
+            INSERT (customer_id, churn_probability, churn_label, recency_days, frequency, monetary, scored_at)
+            VALUES (source.customer_id, source.churn_probability, source.churn_label, source.recency_days, source.frequency, source.monetary, source.scored_at);
+        """
+        
+        # Flatten parameters for the execute call
+        params = []
+        for r in batch:
+            params.extend(r)
+            
+        cursor.execute(sql, params)
+        conn.commit()
+        print(f"Upserted records {i} to {i + len(batch)}")
+
+    print(f"Upsert complete! Total {len(records)} records processed.")
     cursor.close()
     conn.close()
 

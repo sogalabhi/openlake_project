@@ -1,0 +1,15 @@
+dbt_project:
+  target: azure
+  outputs:
+    azure:
+      type: sqlserver
+      driver: 'ODBC Driver 18 for SQL Server'
+      host: "{{ env_var('AZURE_SQL_SERVER') }}"
+      database: crm
+      schema: dbo
+      user: "{{ env_var('AZURE_SQL_USER') }}"
+      password: "{{ env_var('AZURE_SQL_PASSWORD') }}"
+      port: 1433
+      threads: 4
+      encrypt: true
+      trust_cert: true

@@ -17,15 +17,11 @@ def main():
         .appName("ChurnModelTraining") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-        .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_ROOT_USER", "admin")) \
-        .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_ROOT_PASSWORD", "password")) \
-        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+        .config("fs.azure.account.key.stopenlakeabhijith.dfs.core.windows.net", os.environ.get("AZURE_STORAGE_KEY")) \
         .getOrCreate()
 
     
-    silver_path = "s3a://lakehouse/silver/retail_transactions"
+    silver_path = "abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net/silver/retail_transactions"
     df = spark.read.format("delta").load(silver_path)
     df_filtered = df.filter(col("customer_id").isNotNull())
 

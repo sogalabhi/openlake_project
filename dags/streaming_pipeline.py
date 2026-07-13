@@ -13,7 +13,7 @@ with DAG(
         task_id="stream_live_orders",
         conn_id="spark_default",
         application="/opt/airflow/scripts/stream_live_orders.py",
-        packages="io.delta:delta-spark_2.12:3.1.0,org.apache.hadoop:hadoop-aws:3.3.4,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.0",
+        packages="io.delta:delta-spark_2.12:3.1.0,org.apache.hadoop:hadoop-azure:3.3.4,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.0",
         name="live-order-streaming",
         verbose=True,
         execution_timeout=None,

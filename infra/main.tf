@@ -49,3 +49,14 @@ resource "azurerm_mssql_firewall_rule" "allow_local" {
   start_ip_address = "49.43.243.42"
   end_ip_address   = "49.43.243.42"
 }
+
+resource "azurerm_databricks_workspace" "databricks" {
+  name                = "dbw-openlake-abhijith"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  sku                 = "premium" 
+  
+  custom_parameters {
+    no_public_ip = true
+  }
+}

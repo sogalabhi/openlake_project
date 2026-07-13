@@ -1,4 +1,11 @@
-# Retail Lakehouse: End-to-End Data Engineering Project
+# OpenLake: End-to-End Retail Lakehouse Project
+
+## What is OpenLake & A Lakehouse?
+
+*   **OpenLake** is the name of this project: an end-to-end, production-grade retail data engineering pipeline. It acts as a comprehensive design reference for modern data architecture, demonstrating complete portability by implementing the stack locally on open-source tools (Track A) and on managed Azure services (Track B).
+*   **Lakehouse** is an architectural paradigm that combines the best characteristics of **Data Lakes** (low-cost, highly-scalable decoupled object storage) and **Data Warehouses** (ACID transactions, schema enforcement, data quality gates, and high-performance queries). By using open table formats like **Delta Lake** directly on top of object storage, it eliminates the need to run and maintain separate systems for raw storage and analytical queries.
+
+---
 
 ## 1. The Problem We're Solving
 
@@ -210,3 +217,97 @@ minutes." Then instrument Airflow/Spark to actually measure against
 those numbers. An SLA you defined and measured, even informally, is a
 much stronger talking point than an unstated assumption that the
 pipeline "is fast."
+
+---
+
+## 11. Churn Model Results (v1 — Temporal Split Baseline)
+
+### What was fixed
+
+The initial implementation computed the churn label (`churned = 1 if recency_days > 180`)
+from the same `recency_days` column that was used as a training feature.
+This is **data leakage** — the model was given the answer as an input, producing
+a misleading 100% accuracy.
+
+The fix is a **temporal split**:
+
+```
+|<────── feature window (180 days) ──────>|<── label window (90 days) ──>|
+dataset_start                        cutoff_date                      max_date
+
+  df_before → compute recency/frequency/monetary (RFM features)
+  df_after  → did the customer purchase again? (label assignment)
+```
+
+- `recency_days` is now computed relative to the cutoff date — it is a genuine feature.
+- The churn label is determined by a **left join** against post-cutoff purchases.
+  Customers with zero purchases in the 90-day window after cutoff are labelled churned.
+- These are two independent operations, so there is no leakage.
+
+### Results (run: 2026-07-07)
+
+| Metric | Value |
+|---|---|
+| Dataset | UCI Online Retail II (silver layer, Delta Lake on MinIO) |
+| Customers | 5,042 |
+| Churn rate | 67.51% |
+| Model | RandomForestClassifier (100 trees, balanced class weights) |
+| Split | 80/20 stratified train/test, random_state=42 |
+| Overall accuracy | **77%** |
+
+**Classification report:**
+
+```
+              precision    recall  f1-score   support
+
+           0       0.65      0.64      0.65       328   ← retained customers
+           1       0.83      0.83      0.83       681   ← churned customers
+
+    accuracy                           0.77      1009
+   macro avg       0.74      0.74      0.74      1009
+weighted avg       0.77      0.77      0.77      1009
+```
+
+**What each metric means:**
+
+| Metric | Definition |
+|---|---|
+| **Precision** | Of everyone the model *predicted* as churned, what fraction actually churned? |
+| **Recall** | Of everyone who *actually* churned, what fraction did the model catch? |
+| **F1-score** | Harmonic mean of precision and recall — the single summary score per class |
+| **Support** | Number of real test samples in that class |
+| **Accuracy** | Overall: % of all predictions (both classes) that were correct |
+
+**Feature importances:**
+
+| Feature | Importance | Interpretation |
+|---|---|---|
+| `monetary` | **43.2%** | Total spend is the strongest signal — high spenders are more likely to return |
+| `recency_days` | 40.7% | Days since last purchase matters, but no longer dominates (was 84.9% with leakage) |
+| `frequency` | 16.1% | Number of distinct invoices — weakest standalone signal in this dataset |
+
+### Why 77% is a success
+
+In the original (leaking) model, accuracy was 100% because the label was
+algebraically derivable from a feature. That 100% is worthless.
+
+A 77% accuracy on a raw 3-feature RFM baseline, evaluated on a properly
+held-out test set with no leakage, is a **genuine signal**. It reflects the
+real noise in predicting human purchasing behaviour from limited historical data.
+The model is learning something real: high-spending customers who bought
+recently tend to return; customers who went quiet for 6+ months typically don't.
+
+The class 0 (retained) F1-score of 0.65 is the honest weakness — the model
+is better at flagging churners than confirming loyalists. This makes intuitive
+sense: a customer who spent heavily 170 days ago *might* buy next week, or
+might have moved on. The model cannot know for certain from RFM alone, and
+it correctly expresses that uncertainty.
+
+### Next steps to improve the model
+
+- Add product-category diversity as a feature (breadth of purchases predicts loyalty)
+- Add return rate (high return rate correlates with churn)
+- Experiment with a shorter churn window (30–60 days) to catch early signals
+- Try gradient boosting (XGBoost / LightGBM) for comparison
+- Calibrate probabilities with `CalibratedClassifierCV` so the churn *score*
+  (not just the binary prediction) can be ranked and used in CRM prioritisation
