@@ -7,20 +7,26 @@ from sklearn.metrics import classification_report
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, max, countDistinct, sum, datediff, lit, when
 
+OBSERVATION_WINDOW_DAYS = 180
+CHURN_WINDOW_DAYS = 90
 
-OBSERVATION_WINDOW_DAYS = 180  
-CHURN_WINDOW_DAYS = 90 
 
 def main():
-    
-    spark = SparkSession.builder \
-        .appName("ChurnModelTraining") \
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .config("fs.azure.account.key.stopenlakeabhijith.dfs.core.windows.net", os.environ.get("AZURE_STORAGE_KEY")) \
-        .getOrCreate()
 
-    
+    spark = (
+        SparkSession.builder.appName("ChurnModelTraining")
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+        .config(
+            "fs.azure.account.key.stopenlakeabhijith.dfs.core.windows.net",
+            os.environ.get("AZURE_STORAGE_KEY"),
+        )
+        .getOrCreate()
+    )
+
     silver_path = "abfss://lakehouse@stopenlakeabhijith.dfs.core.windows.net/silver/retail_transactions"
     df = spark.read.format("delta").load(silver_path)
     df_filtered = df.filter(col("customer_id").isNotNull())
@@ -36,29 +42,33 @@ def main():
 
     print(f"Dataset max date : {max_date}")
     print(f"Cutoff date      : {cutoff_date}  (features computed up to here)")
-    print(f"Feature window   : {OBSERVATION_WINDOW_DAYS} days before cutoff used for RFM")
-    print(f"Label window     : {CHURN_WINDOW_DAYS} days after cutoff used to assign churn label")
+    print(
+        f"Feature window   : {OBSERVATION_WINDOW_DAYS} days before cutoff used for RFM"
+    )
+    print(
+        f"Label window     : {CHURN_WINDOW_DAYS} days after cutoff used to assign churn label"
+    )
 
     df_before = df_filtered.filter(col("invoice_date") < lit(cutoff_date))
 
     rfm = df_before.groupBy("customer_id").agg(
         datediff(lit(cutoff_date), max("invoice_date")).alias("recency_days"),
         countDistinct("invoice_id").alias("frequency"),
-        sum("revenue").alias("monetary")
+        sum("revenue").alias("monetary"),
     )
 
     df_after = df_filtered.filter(
-        (col("invoice_date") > lit(cutoff_date)) &
-        (col("invoice_date") <= lit(cutoff_date + timedelta(days=CHURN_WINDOW_DAYS)))
+        (col("invoice_date") > lit(cutoff_date))
+        & (col("invoice_date") <= lit(cutoff_date + timedelta(days=CHURN_WINDOW_DAYS)))
     )
 
-    returned_customers = df_after.select("customer_id").distinct() \
-        .withColumn("returned", lit(1))
+    returned_customers = (
+        df_after.select("customer_id").distinct().withColumn("returned", lit(1))
+    )
 
     rfm = rfm.join(returned_customers, on="customer_id", how="left")
     rfm = rfm.withColumn(
-        "churned",
-        when(col("returned").isNull(), 1).otherwise(0)
+        "churned", when(col("returned").isNull(), 1).otherwise(0)
     ).drop("returned")
 
     df_pandas = rfm.toPandas()
@@ -70,24 +80,21 @@ def main():
     y = df_pandas["churned"]
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=0.2,
-        random_state=42,
-        stratify=y      
+        X, y, test_size=0.2, random_state=42, stratify=y
     )
-    
+
     model = RandomForestClassifier(
-        n_estimators=100,
-        random_state=42,
-        class_weight="balanced"
+        n_estimators=100, random_state=42, class_weight="balanced"
     )
     model.fit(X_train, y_train)
-    
+
     predictions = model.predict(X_test)
     print(classification_report(y_test, predictions))
 
     print("Feature importances:")
-    for feature, importance in zip(["recency_days", "frequency", "monetary"], model.feature_importances_):
+    for feature, importance in zip(
+        ["recency_days", "frequency", "monetary"], model.feature_importances_
+    ):
         print(f"  {feature}: {importance:.3f}")
 
     model_path = os.path.join(os.path.dirname(__file__), "model.pkl")
@@ -96,6 +103,7 @@ def main():
     print(f"\nModel saved to {model_path}")
 
     spark.stop()
+
 
 if __name__ == "__main__":
     main()
