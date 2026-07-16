@@ -15,15 +15,15 @@ monthly revenue trend, which customers are about to churn, what does live
 order volume look like right now. The business needs three things data
 engineering exists to provide:
 
-- **Historical analytics** — dashboards on sales, customer value, product
+- **Historical analytics** - dashboards on sales, customer value, product
   performance, refreshed daily.
-- **Near-real-time visibility** — an operations view of orders as they
+- **Near-real-time visibility** - an operations view of orders as they
   happen, not next-day.
-- **A feedback loop** — insights (like a churn score) pushed back into
+- **A feedback loop** - insights (like a churn score) pushed back into
   systems the business actually uses, not stranded in a BI tool.
 
 This is deliberately a *generic, well-understood domain* (retail/e-commerce).
-That's intentional — interviewers can sanity-check your decisions without
+That's intentional - interviewers can sanity-check your decisions without
 learning a new domain first, and the dataset is rich enough to touch
 batch, streaming, dimensional modeling, and ML without inventing fake
 complexity.
@@ -40,8 +40,8 @@ needing access to a live production system.
 ## 2. Architecture Overview
 
 Two parallel tracks, sharing the same data model:
-*   **Track A — Local/open-source (always running, $0, your durable demo)**: MinIO object store, Redpanda (Kafka), Apache Airflow, PySpark batch compute, Delta Lake, and dbt.
-*   **Track B — Azure (managed cloud proof of concept)**: ADLS Gen2, Event Hubs, Azure Data Factory, Azure SQL Database, and Synapse compute.
+*   **Track A - Local/open-source (always running, $0, your durable demo)**: MinIO object store, Redpanda (Kafka), Apache Airflow, PySpark batch compute, Delta Lake, and dbt.
+*   **Track B - Azure (managed cloud proof of concept)**: ADLS Gen2, Event Hubs, Azure Data Factory, Azure SQL Database, and Synapse compute.
 
 ```mermaid
 flowchart TD
@@ -89,20 +89,20 @@ Cross-cutting components touching every layer: **orchestration** (Airflow/ADF), 
 
 | Layer | Tool | Why this one |
 |---|---|---|
-| Object storage (local) | **MinIO** | S3-compatible API, free, lets you write code once that works against MinIO and S3/ADLS with no changes — this is the actual skill (object storage semantics), not the vendor. |
+| Object storage (local) | **MinIO** | S3-compatible API, free, lets you write code once that works against MinIO and S3/ADLS with no changes - this is the actual skill (object storage semantics), not the vendor. |
 | Object storage (cloud) | **ADLS Gen2** | Azure for Students credit covers it at portfolio scale for months; hierarchical namespace is a relevant detail to know vs flat S3. |
-| Table format | **Delta Lake** | This is the answer to "don't commit object-storage antipatterns." Plain Parquet on object storage means every update rewrites whole files — fine for append-only logs, terrible for upserts (e.g. correcting a customer record). Delta gives ACID transactions and MERGE on top of object storage, so you get database-like upsert semantics without hammering the object store with random small writes. You'll explicitly demo this: a customer-dedup job that does a Delta `MERGE` instead of a naive overwrite, and you'll be able to explain *why* that distinction matters in an interview. |
-| Batch orchestration | **Apache Airflow** (local) / **Azure Data Factory** (cloud) | Airflow is the de facto open-source standard — most JDs ask for it by name. ADF gives you the managed-platform equivalent so you can speak to both DAG-as-code and GUI/managed orchestration. |
+| Table format | **Delta Lake** | This is the answer to "don't commit object-storage antipatterns." Plain Parquet on object storage means every update rewrites whole files - fine for append-only logs, terrible for upserts (e.g. correcting a customer record). Delta gives ACID transactions and MERGE on top of object storage, so you get database-like upsert semantics without hammering the object store with random small writes. You'll explicitly demo this: a customer-dedup job that does a Delta `MERGE` instead of a naive overwrite, and you'll be able to explain *why* that distinction matters in an interview. |
+| Batch orchestration | **Apache Airflow** (local) / **Azure Data Factory** (cloud) | Airflow is the de facto open-source standard - most JDs ask for it by name. ADF gives you the managed-platform equivalent so you can speak to both DAG-as-code and GUI/managed orchestration. |
 | Streaming | **Kafka (Redpanda)** locally, **Event Hubs** in Azure | Same reasoning as storage: same protocol, two implementations. Redpanda is a lighter Kafka-API-compatible broker, easier to run in Docker than real Kafka. |
 | Processing | **Apache Spark** (local + Databricks Community Edition / Synapse Spark) | Spark is the dominant batch/streaming engine in the field; Structured Streaming covers the live-order pipeline. |
-| Transformation/SQL | **dbt-core** | Industry-standard for the transform layer — version-controlled, testable SQL with built-in documentation and lineage generation. Using dbt also forces you to write transformations as simple, modular, testable models rather than one giant script, which directly demonstrates the "simplicity + business rules" transformation principles from the article. |
+| Transformation/SQL | **dbt-core** | Industry-standard for the transform layer - version-controlled, testable SQL with built-in documentation and lineage generation. Using dbt also forces you to write transformations as simple, modular, testable models rather than one giant script, which directly demonstrates the "simplicity + business rules" transformation principles from the article. |
 | Data quality | **Great Expectations** | Implemented as a data quality gate ([validate_landing_data.py](file:///home/abhijith/coding/openlake_project/quality/validate_landing_data.py)) validating raw CSV landing data for non-null keys, datatypes, non-negative prices, and customer cohort densities before ingestion. |
-| Catalog & lineage | **OpenMetadata** | Free, open-source, and it auto-ingests lineage from dbt and Airflow — this directly satisfies the "metadata management / schema evolution / lineage" requirement from the article without paying for Purview. |
-| Serving — BI | **Apache Superset** (local) / **Power BI Desktop** (free, unpublished) | Two different audiences: Superset is what a startup/eng-heavy company runs themselves; Power BI is what you'll meet at any Microsoft-stack enterprise. |
-| Serving — ML | **scikit-learn** + a small **FastAPI** wrapper | A churn-prediction model trained on gold-layer features, served via a simple API — demonstrates the "ML model training + real-time prediction" serving pattern without needing a heavyweight MLOps stack. |
+| Catalog & lineage | **OpenMetadata** | Free, open-source, and it auto-ingests lineage from dbt and Airflow - this directly satisfies the "metadata management / schema evolution / lineage" requirement from the article without paying for Purview. |
+| Serving - BI | **Apache Superset** (local) / **Power BI Desktop** (free, unpublished) | Two different audiences: Superset is what a startup/eng-heavy company runs themselves; Power BI is what you'll meet at any Microsoft-stack enterprise. |
+| Serving - ML | **scikit-learn** + a small **FastAPI** wrapper | A churn-prediction model trained on gold-layer features, served via a simple API - demonstrates the "ML model training + real-time prediction" serving pattern without needing a heavyweight MLOps stack. |
 | Reverse ETL | **A custom script** writing the churn score back into a mock "CRM" Postgres table | Reverse ETL tools (Census, Hightouch) are paid SaaS; replicating the pattern by hand is more honest for a portfolio project and shows you understand the *concept*, not just a vendor tool. |
-| IaC | **Terraform** | Defines the Azure resources (storage account, ADF, Event Hubs, SQL DB) so the cloud deployment is reproducible and destroyable — critical for not burning your $100 credit by accident, and a hard requirement on most data engineer JDs now. |
-| CI | **GitHub Actions** | Runs dbt tests and Python unit tests on every push — minimal but real software engineering rigor. |
+| IaC | **Terraform** | Defines the Azure resources (storage account, ADF, Event Hubs, SQL DB) so the cloud deployment is reproducible and destroyable - critical for not burning your $100 credit by accident, and a hard requirement on most data engineer JDs now. |
+| CI | **GitHub Actions** | Runs dbt tests and Python unit tests on every push - minimal but real software engineering rigor. |
 
 ---
 
@@ -112,15 +112,15 @@ This maps directly onto the "data temperature" and "schema handling"
 considerations from the article:
 
 - **Bronze**: raw, schema-on-read, append-only, immutable. This is your
-  system of record for "what did the source actually send us" —
+  system of record for "what did the source actually send us" -
   essential for debugging and reprocessing. Stored cheap, accessed rarely
   (cold/lukewarm).
 - **Silver**: cleaned, deduplicated, conformed types, enforced schema via
-  Delta's schema enforcement. Accessed moderately (lukewarm) — feeds
+  Delta's schema enforcement. Accessed moderately (lukewarm) - feeds
   transformation jobs, not end users directly.
 - **Gold**: business-level dimensional model (fact_orders,
   dim_customer with SCD Type 2, dim_product, monthly aggregates) plus ML
-  feature tables. This is hot data — what dashboards and the churn model
+  feature tables. This is hot data - what dashboards and the churn model
   query directly, so it's small, pre-aggregated, and fast.
 
 This also gives you a clean story for **schema evolution**: bronze tolerates
@@ -152,7 +152,7 @@ answer when asked "how do you handle data that arrives via two paths."
 
 Dashboards alone only demonstrate the "Analytics" serving pattern from
 the article. Adding a small churn-prediction model trained on gold-layer
-features (recency, frequency, monetary value — classic RFM features,
+features (recency, frequency, monetary value - classic RFM features,
 which doubles as your "featurization" transformation example) and then
 writing the prediction back into a mock CRM table demonstrates all three
 serving patterns: Analytics, ML, and Reverse ETL, in one coherent
@@ -160,7 +160,7 @@ pipeline instead of three disconnected demos.
 
 ---
 
-## 7. Governance, Quality, Lineage — How the Requirements Map to Real Components
+## 7. Governance, Quality, Lineage - How the Requirements Map to Real Components
 
 | Requirement | How this project satisfies it |
 |---|---|
@@ -199,11 +199,11 @@ retail-lakehouse/
 
 ## 9. Suggested Build Order (roughly 6–8 weeks, part-time)
 
-1. Local stack up via Docker Compose (MinIO, Redpanda, Airflow, Postgres) — get bronze ingestion of the historical CSV working.
+1. Local stack up via Docker Compose (MinIO, Redpanda, Airflow, Postgres) - get bronze ingestion of the historical CSV working.
 2. dbt models for silver (cleaning, conforming, dedup) and gold (dimensional model + aggregates), with Great Expectations gates between layers.
 3. Streaming path: event generator → Redpanda → Spark Structured Streaming → live gold metrics.
 4. Superset dashboards on gold tables.
-5. OpenMetadata ingestion from dbt + Airflow — lineage and catalog visible end to end.
+5. OpenMetadata ingestion from dbt + Airflow - lineage and catalog visible end to end.
 6. Churn model (RFM features from gold) + FastAPI serving + reverse-ETL script.
 7. Port storage/orchestration/serving to Azure (Terraform up ADLS Gen2, ADF, Event Hubs, Azure SQL, Synapse serverless), re-run the same dbt project against it.
 8. Write the README: architecture diagram, the local-vs-Azure cost/operational comparison, what you'd add for production (PII masking, alerting, SLAs).
@@ -212,7 +212,7 @@ retail-lakehouse/
 
 ## 10. SLA / Retrieval Note
 
-Define explicit, written SLAs even at toy scale — e.g. "gold tables
+Define explicit, written SLAs even at toy scale - e.g. "gold tables
 refreshed by 6am for the previous day," "streaming dashboard lag under 2
 minutes." Then instrument Airflow/Spark to actually measure against
 those numbers. An SLA you defined and measured, even informally, is a
@@ -221,13 +221,13 @@ pipeline "is fast."
 
 ---
 
-## 11. Churn Model Results (v1 — Temporal Split Baseline)
+## 11. Churn Model Results (v1 - Temporal Split Baseline)
 
 ### What was fixed
 
 The initial implementation computed the churn label (`churned = 1 if recency_days > 180`)
 from the same `recency_days` column that was used as a training feature.
-This is **data leakage** — the model was given the answer as an input, producing
+This is **data leakage** - the model was given the answer as an input, producing
 a misleading 100% accuracy.
 
 The fix is a **temporal split**:
@@ -240,7 +240,7 @@ dataset_start                        cutoff_date                      max_date
   df_after  → did the customer purchase again? (label assignment)
 ```
 
-- `recency_days` is now computed relative to the cutoff date — it is a genuine feature.
+- `recency_days` is now computed relative to the cutoff date - it is a genuine feature.
 - The churn label is determined by a **left join** against post-cutoff purchases.
   Customers with zero purchases in the 90-day window after cutoff are labelled churned.
 - These are two independent operations, so there is no leakage.
@@ -275,7 +275,7 @@ weighted avg       0.77      0.77      0.77      1009
 |---|---|
 | **Precision** | Of everyone the model *predicted* as churned, what fraction actually churned? |
 | **Recall** | Of everyone who *actually* churned, what fraction did the model catch? |
-| **F1-score** | Harmonic mean of precision and recall — the single summary score per class |
+| **F1-score** | Harmonic mean of precision and recall - the single summary score per class |
 | **Support** | Number of real test samples in that class |
 | **Accuracy** | Overall: % of all predictions (both classes) that were correct |
 
@@ -283,9 +283,9 @@ weighted avg       0.77      0.77      0.77      1009
 
 | Feature | Importance | Interpretation |
 |---|---|---|
-| `monetary` | **43.2%** | Total spend is the strongest signal — high spenders are more likely to return |
+| `monetary` | **43.2%** | Total spend is the strongest signal - high spenders are more likely to return |
 | `recency_days` | 40.7% | Days since last purchase matters, but no longer dominates (was 84.9% with leakage) |
-| `frequency` | 16.1% | Number of distinct invoices — weakest standalone signal in this dataset |
+| `frequency` | 16.1% | Number of distinct invoices - weakest standalone signal in this dataset |
 
 ### Why 77% is a success
 
@@ -298,7 +298,7 @@ real noise in predicting human purchasing behaviour from limited historical data
 The model is learning something real: high-spending customers who bought
 recently tend to return; customers who went quiet for 6+ months typically don't.
 
-The class 0 (retained) F1-score of 0.65 is the honest weakness — the model
+The class 0 (retained) F1-score of 0.65 is the honest weakness - the model
 is better at flagging churners than confirming loyalists. This makes intuitive
 sense: a customer who spent heavily 170 days ago *might* buy next week, or
 might have moved on. The model cannot know for certain from RFM alone, and
