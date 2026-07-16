@@ -283,14 +283,14 @@ for time windows that end before 10:00, freeing memory.
 timeline
     title Watermark Effect
     section Event Time
-        10:00 : Order placed
-        10:05 : Order placed (late, arrives at 10:12)
+        "10:00" : "Order placed"
+        "10:05" : "Order placed (late, arrives at 10:12)"
     section Processing Time
-        10:02 : Spark processes 10:00 order
-        10:10 : Watermark = 10:10 - 10min = 10:00
-        10:12 : Late order (10:05) arrives - still accepted (10:05 > watermark 10:00)
-        10:22 : Watermark advances to 10:12
-        Very late order at 9:55 arrives at 10:25 - dropped (9:55 < watermark 10:12)
+        "10:02" : "Spark processes 10:00 order"
+        "10:10" : "Watermark = 10:10 - 10min = 10:00"
+        "10:12" : "Late order (10:05) arrives - still accepted (10:05 > watermark 10:00)"
+        "10:22" : "Watermark advances to 10:12"
+        "10:25" : "Very late order (9:55) arrives - dropped (9:55 < watermark 10:12)"
 ```
 
 **What happens to a record that arrives after the watermark?** It's dropped silently.
