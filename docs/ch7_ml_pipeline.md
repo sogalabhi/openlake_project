@@ -119,6 +119,36 @@ dataset_start                       cutoff_date                    max_date
   df_after  → did the customer purchase again? (the churn label)
 ```
 
+To understand why this is correct, let's look at a concrete example using dates.
+
+#### A Concrete Example: The Case of John Doe
+
+Suppose our dataset spans from **January 1st, 2026** to **September 27th, 2026** (meaning `max_date` is September 27th).
+
+**Scenario 1: The Leaking Approach (Before)**
+*   **The Feature Computation:** RFM features are computed using the *entire* dataset history (Jan 1 to Sep 27).
+*   John Doe places orders in March and June, with his last order on **June 29th, 2026**.
+*   John's `recency_days` is calculated as the difference between `max_date` (Sep 27) and his last order (June 29):
+    $$\text{Recency} = \text{Sep 27} - \text{June 29} = 90 \text{ days}$$
+*   **The Label Assignment:** We define `churned` as a client who hasn't purchased in the last 90 days of the dataset:
+    $$\text{churned} = 1 \text{ if } \text{recency\_days} \ge 90$$
+*   John's `recency_days` is 90, so his target label is set to **`1`**.
+*   **The Leakage:** When we feed `[recency_days=90, frequency=2, monetary=150.0]` to the model to predict `churned=1`, we are giving it the answer. The model doesn't look at John's actual purchase frequency or spending drop-offs. It simply learns:
+    $$\text{If } \text{feature}[0] \ge 90 \implies \text{label} = 1$$
+    This is a mathematical tautology. In production, when a new customer arrives with a recency of 90 days, we won't know if they will return in the *future* 90 days because that future hasn't happened yet. The model fails completely.
+
+**Scenario 2: The Temporal Split Fix (After)**
+*   We establish a **`cutoff_date`** of **June 29th, 2026** (exactly 90 days before `max_date`).
+*   **Feature Window (Jan 1 – June 29):** We calculate John Doe's features *only* using data before June 29th.
+    *   Suppose John's last order in this window was on **May 10th**.
+    *   His `recency_days` is calculated relative to the *cutoff*, not the max date:
+        $$\text{Recency} = \text{June 29} - \text{May 10} = 50 \text{ days}$$
+    *   His features are now `[recency_days=50, frequency=2, monetary=150.0]`.
+*   **Label Window (June 30 – Sep 27):** We look *forward* into the next 90 days to determine if he returns.
+    *   If John Doe places an order on **August 15th** (within the label window), his label is **`0`** (retained).
+    *   If he makes no purchases in this period, his label is **`1`** (churned).
+*   **The Model's Challenge:** Now, the model receives `recency_days = 50` and must predict whether the label is `0` or `1`. There is no algebraic relation between `50` and the future. The model must actually look at patterns: "Do customers with a recency of 50 days and a frequency of 2 usually place another order in the next 90 days?" This forces the Random Forest to learn real human purchase decay curves.
+
 From [`scripts/train_churn_model.py`](../scripts/train_churn_model.py#L38-L66):
 
 ```python
